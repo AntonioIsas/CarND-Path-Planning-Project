@@ -202,7 +202,7 @@ int main() {
   }
 
   int lane = 1;
-  double ref_vel = 49.5;
+  double ref_vel = 0.0;
 
   h.onMessage([&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,&map_waypoints_dx,&map_waypoints_dy, &lane, &ref_vel](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                      uWS::OpCode opCode) {
@@ -243,6 +243,32 @@ int main() {
 
 
             int prev_size = previous_path_x.size();
+
+
+            // Prevent Collision
+            if(prev_size>0){
+                car_s = end_path_s;
+            }
+
+            bool too_close = false;
+
+            // find ref_vel to use
+            for(int i=0; i<sensor_fusion.size(); i++){
+                // car is in same lane
+                float d = sensor_fusion[i][6];
+                if(d< (2+4*lane+2)&&d>(2+4*lane-2)){
+                    double vx = sensor_fusion[i][3];
+                    double vy = sensor_fusion[i][4];
+                    double check_speed = sqrt(vx*vx+vy*vy);
+                    double check_car_s = sensor_fusion[i][5];
+
+                    check_car_s+=((double)prev_size*.02*check_speed);
+
+                    if((check_car_s > car_s) && ((check_car_s-car_s)<30)){
+                        too_close = true;
+                    }
+                }
+            }
 
             //Create a list of waypoints
             vector<double> ptsx;
@@ -317,7 +343,7 @@ int main() {
             }
 
             //Calculate spline for desired speed
-            double target_x = 30;
+            double target_x = 30.0;
             double target_y = s(target_x);
             double target_dist = sqrt((target_x*target_x)+(target_y*target_y));
 
@@ -325,6 +351,12 @@ int main() {
 
             //fill the rest of points for a total of 50 points
             for( int i=1; i<=50-previous_path_x.size(); ++i){
+                if(too_close){
+                    ref_vel -= .224;
+                } else if(ref_vel<49.9){
+                    ref_vel += .224;
+                }
+
                 double N = (target_dist/(0.02*ref_vel/2.24));
                 double x_point = x_add_on+(target_x)/N;
                 double y_point = s(x_point);
