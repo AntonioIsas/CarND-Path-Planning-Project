@@ -186,18 +186,18 @@ int pickLane(int lane, double car_s, int prev_size, const std::vector<std::vecto
         double speed = MAX_VEL;
 
         // get lane speed
-        for(int i=0; i<sensor_fusion.size(); i++){
+        for(int j=0; j<sensor_fusion.size(); j++){
             // car in lane?
-            float d = sensor_fusion[i][6];
+            float d = sensor_fusion[j][6];
             if(d< (2+4*current_lane+2)&&d>(2+4*current_lane-2)){
-                double vx = sensor_fusion[i][3];
-                double vy = sensor_fusion[i][4];
+                double vx = sensor_fusion[j][3];
+                double vy = sensor_fusion[j][4];
                 double check_speed = sqrt(vx*vx+vy*vy);
-                double check_car_s = sensor_fusion[i][5];
+                double check_car_s = sensor_fusion[j][5];
 
                 check_car_s+=((double)prev_size*.02*check_speed);
 
-                if((check_car_s > car_s-8) && ((check_car_s-car_s)<30)){
+                if((check_car_s > car_s-6) && ((check_car_s-car_s)<30)){
                     double new_speed = check_speed*2.23694;
                     if( new_speed < speed ){
                         speed = new_speed;
@@ -207,14 +207,6 @@ int pickLane(int lane, double car_s, int prev_size, const std::vector<std::vecto
         }
         speeds.push_back(speed);
     }
-
-    /*
-    for(int i=0; i<possible_lanes.size(); ++i){
-        std::cout <<"lane:"<< possible_lanes[i] << " speed: " <<speeds[i]<<endl;
-    }
-    std::cout<< distance(speeds.begin(),max_element(speeds.begin(),speeds.end())) <<endl;
-    std::cout<<"------"<<endl;
-    */
 
     return possible_lanes[distance(speeds.begin(),max_element(speeds.begin(),speeds.end()))];
 }
@@ -257,11 +249,12 @@ int main() {
   }
 
   int lane = 1;
+  int target_lane = 1;
   double ref_vel = 0.0;
   double max_vel = MAX_VEL;
 
 
-  h.onMessage([&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,&map_waypoints_dx,&map_waypoints_dy, &lane, &ref_vel, &max_vel](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
+  h.onMessage([&map_waypoints_x,&target_lane,&map_waypoints_y,&map_waypoints_s,&map_waypoints_dx,&map_waypoints_dy, &lane, &ref_vel, &max_vel](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                      uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
@@ -302,42 +295,81 @@ int main() {
           	vector<double> next_y_vals;
 
             int prev_size = previous_path_x.size();
-
-            // Smooth transition
             if(prev_size>0){
                 car_s = end_path_s;
             }
 
+            bool change_lane = false;
+            if( target_lane != lane ){
+                if(car_d<(2+4*target_lane+.2)&&car_d>(2+4*target_lane-.2)){
+                    lane = target_lane;
 
-            lane = pickLane(lane, car_s, prev_size, sensor_fusion);
+                } else {
+                    change_lane = true;
+                }
+            } else {
+                target_lane = pickLane(lane, car_s, prev_size, sensor_fusion);
+            }
 
             // Prevent Collision
-            //bool too_close = false;
-            //bool reset_speed = true;
-            // get lane speed
-            for(int i=0; i<sensor_fusion.size(); i++){
+            bool safe_change = true;
+            // Find closest car in lane
+            vector<double> closest_car;
+            for(int i=0; i<sensor_fusion.size(); ++i){
                 // car is in same lane
                 float d = sensor_fusion[i][6];
-                if(d< (2+4*lane+2)&&d>(2+4*lane-2)){
-                    double vx = sensor_fusion[i][3];
-                    double vy = sensor_fusion[i][4];
-                    double check_speed = sqrt(vx*vx+vy*vy);
-                    double check_car_s = sensor_fusion[i][5];
+                double vx = sensor_fusion[i][3];
+                double vy = sensor_fusion[i][4];
+                double check_speed = sqrt(vx*vx+vy*vy);
+                double check_car_s = sensor_fusion[i][5];
+                check_car_s+=((double)prev_size*.02*check_speed);
 
-                    check_car_s+=((double)prev_size*.02*check_speed);
-
-                    if((check_car_s > car_s) && ((check_car_s-car_s)<15)){
-                        //reset_speed = false;
-                        //too_close = true;
-                        max_vel = check_speed*2.23694;
+                //Car in current lane
+                if( d<(2+4*lane+2) && d>(2+4*lane-2) && (check_car_s>car_s) && ((check_car_s-car_s)<30)){
+                    if(closest_car.size()==0){
+                        for (int j = 0; j<sensor_fusion[i].size(); ++j){
+                            if( j==5 ){
+                                closest_car.push_back( check_car_s );
+                                continue;
+                            }
+                            closest_car.push_back(sensor_fusion[i][j]);
+                        }
+                    } else if (closest_car[5]>check_car_s){//update closest car
+                        for (int j = 0; j<sensor_fusion[i].size(); ++j){
+                            if( j==5 ){
+                                closest_car[j]= check_car_s;
+                                continue;
+                            }
+                            closest_car[j] = sensor_fusion[i][j];
+                        }
                     }
                 }
-            }
-            /*
-            if( reset_speed ){
-                max_vel = MAX_VEL;
-            }*/
 
+                //Car in target lane
+                if( d<(2+4*target_lane+2) && d>(2+4*target_lane-2) && (check_car_s>car_s-7) && ((check_car_s-car_s)<15)){
+                    safe_change = false;
+                }
+
+            }
+
+            // if car ahead, match speed
+            if( closest_car.size()>0 ){
+                double vx = closest_car[3];
+                double vy = closest_car[4];
+                double check_speed = sqrt(vx*vx+vy*vy);
+                double check_car_s = closest_car[5];
+
+                //check_car_s+=((double)prev_size*.02*check_speed);
+                if((check_car_s > car_s) && ((check_car_s-car_s)<10)){
+                    max_vel = (check_speed-2)*2.23694;
+                } else if((check_car_s > car_s) && ((check_car_s-car_s)<17)){
+                    max_vel = check_speed*2.23694;
+                } else if((check_car_s > car_s) && ((check_car_s-car_s)>25)){
+                    max_vel = MAX_VEL;
+                }
+            } else {
+                max_vel = MAX_VEL;
+            }
 
             //Create a list of waypoints
             vector<double> ptsx;
@@ -374,13 +406,25 @@ int main() {
                 ptsy.push_back(ref_y);
             }
 
-            //Add evenly 40m spaced points
-            vector<double> next_wp0 = getXY(car_s+40, (2+4*lane),
-                            map_waypoints_s, map_waypoints_x, map_waypoints_y);
-            vector<double> next_wp1 = getXY(car_s+80, (2+4*lane),
-                            map_waypoints_s, map_waypoints_x, map_waypoints_y);
-            vector<double> next_wp2 = getXY(car_s+120, (2+4*lane),
-                            map_waypoints_s, map_waypoints_x, map_waypoints_y);
+            vector<double> next_wp0, next_wp1, next_wp2;
+            if( change_lane && safe_change ){
+                //Add evenly 30m spaced points
+                next_wp0 = getXY(car_s+35, (2+4*target_lane),
+                                map_waypoints_s, map_waypoints_x, map_waypoints_y);
+                next_wp1 = getXY(car_s+70, (2+4*target_lane),
+                                map_waypoints_s, map_waypoints_x, map_waypoints_y);
+                next_wp2 = getXY(car_s+105, (2+4*target_lane),
+                                map_waypoints_s, map_waypoints_x, map_waypoints_y);
+            } else {
+                //Add evenly 30m spaced points
+                next_wp0 = getXY(car_s+35, (2+4*lane),
+                                map_waypoints_s, map_waypoints_x, map_waypoints_y);
+                next_wp1 = getXY(car_s+70, (2+4*lane),
+                                map_waypoints_s, map_waypoints_x, map_waypoints_y);
+                next_wp2 = getXY(car_s+105, (2+4*lane),
+                                map_waypoints_s, map_waypoints_x, map_waypoints_y);
+            }
+
 
             ptsx.push_back(next_wp0[0]);
             ptsx.push_back(next_wp1[0]);
@@ -417,18 +461,10 @@ int main() {
 
             //fill the rest of points for a total of 50 points
             for( int i=1; i<=50-previous_path_x.size(); ++i){
-                /*
-                if(too_close){
-                    ref_vel -= .224;
-                } else if(ref_vel<max_vel){
-                    ref_vel += .224;
-                }
-                */
                 if(ref_vel>max_vel){
-                    //ref_vel -= .224;
-                    ref_vel -= .25;
+                    ref_vel -= .3;
                 } else {
-                    ref_vel += .25;
+                    ref_vel += .3;
                 }
 
                 double N = (target_dist/(0.02*ref_vel/2.24));
