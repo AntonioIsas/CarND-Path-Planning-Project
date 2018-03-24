@@ -1,11 +1,39 @@
 # CarND-Path-Planning-Project
 Self-Driving Car Engineer Nanodegree Program
-   
-### Simulator.
-You can download the Term3 Simulator which contains the Path Planning Project from the [releases tab (https://github.com/udacity/self-driving-car-sim/releases).
+
+![alt text](img/Lap_Complete.png "Result" )
 
 ### Goals
 In this project your goal is to safely navigate around a virtual highway with other traffic that is driving +-10 MPH of the 50 MPH speed limit. You will be provided the car's localization and sensor fusion data, there is also a sparse map list of waypoints around the highway. The car should try to go as close as possible to the 50 MPH speed limit, which means passing slower traffic when possible, note that other cars will try to change lanes too. The car should avoid hitting other cars at all cost as well as driving inside of the marked road lanes at all times, unless going from one lane to another. The car should be able to make one complete loop around the 6946m highway. Since the car is trying to go 50 MPH, it should take a little over 5 minutes to complete 1 loop. Also the car should not experience total acceleration over 10 m/s^2 and jerk that is greater than 10 m/s^3.
+
+### Rubric
+* The car is able to drive at least 4.32 miles without incident..
+* The car drives according to the speed limit.
+* Max Acceleration and Jerk are not Exceeded.
+* Car does not have collisions.
+* The car stays in its lane, except for the time between changing lanes.
+* The car is able to change lanes
+
+### Reflection
+This code is based on the walkthrough provided by Udacity.
+The car was able to drive the track without any incidents and at a good speed.
+
+To drive successfully around the track, the car needs to follow the waypoints, to get the trajectory I'm using the frenet coordinate system along with the spline library.  
+The frenet system provides some coordinates to follow the lanes more easily, while the spline tool lets us generate good trajectories with minimal jerk, I found that the suggested values of spacing the spline points by 30 points was too short and sometimes it will generate too much jerk so I spaced it a little more to make the spline smoother.
+The velocity is controlled by grabbing different points along the spline. The code for generating the spline is in file `main.cpp (lines 374-489)`
+
+To avoid collisions with other cars I first iterate over the sensor fusion results and locate the closest car ahead in the lane `main.cpp (lines 317-352)`, if the car is getting close, the max speed of the vehicle is reduced to match the speed of the car ahead, If it gets even closer the speed is decreased more to keep a safe distance from it `main.cpp (lines 355-372)`.
+
+For the behavior module I prepared a function called `pickLane (lines 169-212)`, it consists of a FSM that will choose the possible lanes depending on the current lane, it also looks for other cars in the lane and gets their speed so it can choose the best one.
+
+Once a new lane has been selected as target, we signal the code that we should change lanes and wait until this change has been completed before looking for a new target `302-312`, (this part needs to be improved because in some cases the car gets stuck with the velocity from previous lane or the car changes back to lane too fast)
+
+If the signal for change lanes has been activated we check if the new lane is safe for the transition in the collision detection code `348-351`
+
+If the new lane has been signaled and it is safe to go we generate the new trajectory by adding points to the spline for the new lane `410-418`
+
+### Simulator.
+You can download the Term3 Simulator which contains the Path Planning Project from the [releases tab (https://github.com/udacity/self-driving-car-sim/releases).
 
 #### The map of the highway is in data/highway_map.txt
 Each waypoint in the list contains  [x,y,s,dx,dy] values. x and y are the waypoint's map coordinate position, the s value is the distance along the road to get to that waypoint in meters, the dx and dy values define the unit normal vector pointing outward of the highway loop.
@@ -38,13 +66,13 @@ Here is the data provided from the Simulator to the C++ Program
 #### Previous path data given to the Planner
 
 //Note: Return the previous list but with processed points removed, can be a nice tool to show how far along
-the path has processed since last time. 
+the path has processed since last time.
 
 ["previous_path_x"] The previous list of x points previously given to the simulator
 
 ["previous_path_y"] The previous list of y points previously given to the simulator
 
-#### Previous path's end s and d values 
+#### Previous path's end s and d values
 
 ["end_path_s"] The previous list's last point's frenet s value
 
@@ -52,7 +80,7 @@ the path has processed since last time.
 
 #### Sensor Fusion Data, a list of all other car's attributes on the same side of the road. (No Noise)
 
-["sensor_fusion"] A 2d vector of cars and then that car's [car's unique ID, car's x position in map coordinates, car's y position in map coordinates, car's x velocity in m/s, car's y velocity in m/s, car's s position in frenet coordinates, car's d position in frenet coordinates. 
+["sensor_fusion"] A 2d vector of cars and then that car's [car's unique ID, car's x position in map coordinates, car's y position in map coordinates, car's x velocity in m/s, car's y velocity in m/s, car's s position in frenet coordinates, car's d position in frenet coordinates.
 
 ## Details
 
@@ -82,7 +110,7 @@ A really helpful resource for doing this project and creating smooth trajectorie
   * Run either `install-mac.sh` or `install-ubuntu.sh`.
   * If you install from source, checkout to commit `e94b6e1`, i.e.
     ```
-    git clone https://github.com/uWebSockets/uWebSockets 
+    git clone https://github.com/uWebSockets/uWebSockets
     cd uWebSockets
     git checkout e94b6e1
     ```
@@ -137,4 +165,3 @@ still be compilable with cmake and make./
 
 ## How to write a README
 A well written README file can enhance your project and portfolio.  Develop your abilities to create professional README files by completing [this free course](https://www.udacity.com/course/writing-readmes--ud777).
-
